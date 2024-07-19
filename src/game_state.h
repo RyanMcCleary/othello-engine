@@ -55,4 +55,6 @@ void copy_make_move(enum square_state **src_board, enum square_state **dst_board
 
 enum square_state **board_alloc(void) ;
 
+void board_free(enum square_state **board);
+
 #endif
