@@ -74,24 +74,26 @@ void print_moves(enum square_state **board) {
 	
 }
 
+void print_square_index(struct square_index square) {
+	printf("(%d, %d)\n", square.rank, square.file);
+}
+
 int main(int argc, char **argv) {
 	enum square_state **board = board_alloc();
 	board_init(board);
-	print_board(board);
-	print_moves(board);
-	print_check_win(board);
-	puts("Black places a disk on (2, 4):");
-	make_move(board, PLAYER_BLACK, 2, 4);
-	print_board(board);
-	print_moves(board);
-	print_check_win(board);
-	puts("White places a disk on (2, 5):");
-	make_move(board, PLAYER_WHITE, 2, 5);
-	print_board(board);
-	print_moves(board);
-	print_check_win(board);
-	for (int i = 0; i < 10; i++) {
-		printf("%f\n", minmax(board, PLAYER_WHITE, PLAYER_WHITE, i));
+	while (1) {
+		print_board(board);
+		int rank, file;
+		printf("Enter move: ");
+		if (scanf("%d %d", &rank, &file) != 2) {
+			exit(1);
+		}
+		make_move(board, PLAYER_BLACK, rank, file);
+		puts("Board after making move:");
+		print_board(board);
+		puts("\nSearching for a move...");
+		struct square_index engine_move = best_move(board, PLAYER_WHITE, 10);
+		make_move(board, PLAYER_WHITE, engine_move.rank, engine_move.file);
 	}
 	board_free(board);
     return 0;
