@@ -81,6 +81,7 @@ void print_square_index(struct square_index square) {
 int main(int argc, char **argv) {
 	enum square_state **board = board_alloc();
 	board_init(board);
+
 	while (1) {
 		print_board(board);
 		int rank, file;
@@ -92,8 +93,9 @@ int main(int argc, char **argv) {
 		puts("Board after making move:");
 		print_board(board);
 		puts("\nSearching for a move...");
-		struct square_index engine_move = best_move(board, PLAYER_WHITE, 10);
+		struct square_index engine_move = best_move(board, PLAYER_WHITE, 8);
 		make_move(board, PLAYER_WHITE, engine_move.rank, engine_move.file);
+		printf("%f\n", alphabeta(board, PLAYER_WHITE, 8, -10.0, 10.0));
 	}
 	board_free(board);
     return 0;
