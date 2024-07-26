@@ -4,7 +4,7 @@
 
 struct random_generator {
 	random_generator(std::random_device rd)
-		: gen(rd()) { }
+		: mt_gen(rd()) { }
 	std::mt19937_64 mt_gen;
 };
 
@@ -18,5 +18,9 @@ std::uint64_t random_uint64(struct random_generator *gen) {
     std::uniform_int_distribution<unsigned long long> dist(
         std::numeric_limits<std::uint64_t>::min(),
         std::numeric_limits<std::uint64_t>::max());
-	
+	return dist(gen->mt_gen);
+}
+
+void free_random_generator(struct random_generator *gen) {
+	delete gen;
 }
