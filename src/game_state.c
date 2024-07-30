@@ -35,6 +35,91 @@ bool is_valid_direction(enum square_state **board, enum player current_player,
     }
 }
 
+bitboard flip_north(bitboard disks_to_flip, bitboard move) {
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move << 8) & disks_to_flip;
+	}
+	return result;
+}
+
+
+bitboard flip_south(bitboard disks_to_flip, bitboard move) {
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move >> 8) & disks_to_flip;
+	}
+	return result;
+}
+
+bitboard flip_east(bitboard disks_to_flip, bitboard move) {
+	bitboard not_first_file = 0xFEFEFEFEFEFEFEFEULL;
+	disks_to_flip &= not_first_file;
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move >> 1) & disks_to_flip;
+	}
+	return result;
+}
+
+bitboard flip_west(bitboard disks_to_flip, bitboard move) {
+	bitboard not_last_file = 0x7F7F7F7F7F7F7F7FULL;
+	disks_to_flip &= not_last_file;
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move << 1) & disks_to_flip;
+	}
+	return result;
+}
+
+bitboard flip_northeast(bitboard disks_to_flip, bitboard move) {
+	bitboard not_first_file = 0xFEFEFEFEFEFEFEFEULL;
+	disks_to_flip &= not_first_file;
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move << 9) & disks_to_flip;
+	}
+	return result;
+}
+
+bitboard flip_northwest(bitboard disks_to_flip, bitboard move) {
+	bitboard not_first_file = 0xFEFEFEFEFEFEFEFEULL;
+	disks_to_flip &= not_first_file;
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move << 7) & disks_to_flip;
+	}
+	return result;
+}
+
+bitboard flip_southeast(bitboard disks_to_flip, bitboard move) {
+	bitboard not_first_file = 0xFEFEFEFEFEFEFEFEULL;
+	disks_to_flip &= not_first_file;
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move >> 7) & disks_to_flip;
+	}
+	return result;
+}
+
+bitboard flip_northwest(bitboard disks_to_flip, bitboard move) {
+	bitboard not_first_file = 0xFEFEFEFEFEFEFEFEULL;
+	disks_to_flip &= not_first_file;
+	bitboard result = 0;
+	while (move) {
+		result |= move;
+		move = (move >> 9) & disks_to_flip;
+	}
+	return result;
+}
+
 bool in_bounds(int rank, int file) {
     return (0 <= rank && rank < 8 && 0 <= file && file < 8);
 }
