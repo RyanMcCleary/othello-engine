@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "bitboard.h"
 
 void print_board(bitboard black, bitboard white) {

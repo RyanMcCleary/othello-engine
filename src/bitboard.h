@@ -1,26 +1,21 @@
 #ifndef BITBOARD_H
 #define BITBOARD_H
 
-#include <stddef.h>
+#include <stdint.h>
 
-typedef bitboard uint64_t;
+typedef uint64_t bitboard;
 
 struct board {
 	bitboard black;
 	bitboard white;
 };
 
-bitboard bb_ref(bitboard bb, uint8_t rank, uint8_t file) {
-	return bb >> (rank * 8 + file);
-}
+bitboard bb_ref(bitboard bb, uint8_t rank, uint8_t file);
 
-bitboard bb_set(bitboard bb, uint8_t rank, uint8_t file) {
-	return bb | (((bitboard) 0x01) << (rank * 8 + file));
-}
+bitboard bb_set(bitboard bb, uint8_t rank, uint8_t file);
 
-bitboard bb_flip(bitboard bb, uint8_t rank, uint8_t file) {
-	return bb ^ (((bitboard) 0x01) << (rank * 8 + file));
-}
+bitboard bb_flip(bitboard bb, uint8_t rank, uint8_t file);
 
+void print_board(bitboard black, bitboard white);
 
 #endif
