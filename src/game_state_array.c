@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <string.h>
 #include "game_state.h"
-#include "debug.h"
 
 bool in_bounds(int rank, int file);
 

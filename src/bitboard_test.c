@@ -1,4 +1,5 @@
 #include "bitboard.h"
+#include <stdio.h>
 
 int main(int argc, char **argv) {
 	bitboard black = 0, white = 0;
@@ -6,6 +7,13 @@ int main(int argc, char **argv) {
 	black = bb_set(black, 4, 4);
 	white = bb_set(white, 3, 4);
 	white = bb_set(white, 4, 3);
+	print_board(black, white);
+	printf("black = 0x%016lx, white = 0x%016lx\n", black, white);
+	bitboard move1 = 0x0000000000100000ULL;
+	bitboard flipped = flip_south(white, black, move1);
+	black |= flipped | move1;
+	printf("flip_south: 0x%016lx\n", flipped);
+	white &= ~black;
 	print_board(black, white);
 	return 0;
 }
