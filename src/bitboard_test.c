@@ -15,5 +15,11 @@ int main(int argc, char **argv) {
 	printf("flip_south: 0x%016lx\n", flipped);
 	white &= ~black;
 	print_board(black, white);
+	bitboard move2 = 0x0000000000200000ULL;
+	flipped = flip_southwest(black, white, move2);
+	white |= flipped | move2;
+	printf("flip_southwest: 0x%016lx\n", flipped);
+	black &= ~white;
+	print_board(black, white);
 	return 0;
 }

@@ -36,6 +36,17 @@ bitboard signed_shift(bitboard bb, int shift) {
 	}
 }
 
+bitboard orthogonal_mask(uint8_t rank, uint8_t file) {
+	return (0xFFULL << rank) | (0x0101010101010101ULL << file);
+}
+
+bitboard diagonal_mask(uint8_t rank, uint8_t file) {
+	bitboard main_diag = 0x0102040810204080ULL;
+	bitboard anti_diag = 0x8040201008040201ULL;
+	mask = main_diag | anti_diag;
+	return signed_shift(mask, (int8_t)rank - 3) | signed_shift(mask, (int8_t)file - 3);
+}
+
 bitboard generalized_ray_flip(bitboard disks_to_flip, bitboard friendly_disks,
 							  bitboard move, bitboard no_wrap, int shift) {
 	bitboard result = 0;
