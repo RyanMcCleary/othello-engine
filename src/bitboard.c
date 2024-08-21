@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include "bitboard.h"
+#include <inttypes.h>
+#include <stdlib.h>
+#include <time.h>
 
 void print_board(bitboard black, bitboard white) {
 	for (uint8_t rank = 0; rank < 8; rank++) {
@@ -37,14 +40,15 @@ bitboard signed_shift(bitboard bb, int shift) {
 }
 
 bitboard orthogonal_mask(uint8_t rank, uint8_t file) {
-	return (0xFFULL << rank) | (0x0101010101010101ULL << file);
+	return (~(UINT64_C(1) << 8 * rank + file) &
+        ((UINT64_C(0x7E) << 8 * rank) |
+        (UINT64_C(0x0001010101010100) << file)));
 }
 
 bitboard diagonal_mask(uint8_t rank, uint8_t file) {
-	bitboard main_diag = 0x0102040810204080ULL;
-	bitboard anti_diag = 0x8040201008040201ULL;
-	mask = main_diag | anti_diag;
-	return signed_shift(mask, (int8_t)rank - 3) | signed_shift(mask, (int8_t)file - 3);
+	return (~(UINT64_C(1) << 8 * rank + file) &
+        (signed_shift(UINT64_C(0x0040201008040200), 8 * (rank - file))  |
+        signed_shift(UINT64_C(0x0002040810204000), 8 * (rank - file + 1))));
 }
 
 bitboard generalized_ray_flip(bitboard disks_to_flip, bitboard friendly_disks,
@@ -105,15 +109,67 @@ bitboard flip_southwest(bitboard disks_to_flip, bitboard friendly_disks, bitboar
 		0xFEFEFEFEFEFEFEFEULL, 7);
 }
 
-/*
-bitboard flip_all(bitboard disks_to_flip, bitboard move) {
-	bitboard result = flip_north(disks_to_flip, move);
-	result |= flip_south(disks_to_flip, move);
-	result |= flip_east(disks_to_flip, move);
-	result |= flip_west(disks_to_flip, move);
-	result |= flip_northeast(disks_to_flip, move);
-	result |= flip_northwest(disks_to_flip, move);
-	result |= flip_southeast(disks_to_flip, move);
-	return result | flip_southwest(disks_to_flip, move);
+bitboard flip_all(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
+	bitboard result = flip_north(disks_to_flip, friendly_disks, move);
+	result |= flip_south(disks_to_flip, friendly_disks, move);
+	result |= flip_east(disks_to_flip, friendly_disks, move);
+	result |= flip_west(disks_to_flip, friendly_disks, move);
+	result |= flip_northeast(disks_to_flip, friendly_disks, move);
+	result |= flip_northwest(disks_to_flip, friendly_disks, move);
+	result |= flip_southeast(disks_to_flip, friendly_disks, move);
+	return result | flip_southwest(disks_to_flip, friendly_disks, move);
 }
-*/
+
+uint64_t random_uint64(void) {
+	uint64_t result = (uint64_t)(rand() & 0xFFFF);
+	result |= ((uint64_t)(rand() & 0xFFFF) << 16);
+	result |= ((uint64_t)(rand() & 0xFFFF) << 32);
+	return result | ((uint64_t)(rand() & 0xFFFF) << 48);
+}
+
+void foreach_subset(bitboard set, void (*fn)(bitboard)) {
+    for (bitboard subset = set; subset; subset = (subset - 1) & set) fn(subset);
+}
+
+void subset_fn(bitboard subset) {
+    printf("0x%" PRIx64 "\n", subset);
+}
+
+bitboard *fill_table(bitboard *table, struct square_index square,
+            struct magic_info minfo) {
+    bitboard subset = minfo.mask;
+    bitboard square_mask = UINT64_C(1) << (8 * square.rank + square.file);
+    while (subset) {
+        size_t hash = (size_t)((subset * minfo.magic) >> (64 - minfo.num_bits));
+        bitboard flipped = flip_all(minfo.mask, ~minfo.mask, square_mask);
+        if (table[hash] != square_mask) {
+            return NULL;
+        }
+        table[hash] = flipped;
+        subset = (subset - 1) & minfo.mask;
+    }
+    return table;
+}
+
+struct magic_info find_magic(bitboard *table, struct square_index square,
+                    struct magic_info minfo) {
+    while (1) {
+        for (size_t i = 0; i < (1 << minfo.num_bits); i++) {
+            table[i] = UINT64_C(1) << (8 * square.rank + square.file);
+        }
+        minfo.magic = random_uint64() & random_uint64() & random_uint64();
+        if (fill_table(table, square, minfo)) {
+            return minfo;
+        }
+    }
+}
+
+int main(int argc, char **argv) {
+    struct square_index square = { .rank = 4, .file = 4 };
+    struct magic_info minfo = { .mask = orthogonal_mask(4, 4), .num_bits = 11 };
+    bitboard table[2048];
+    fill_table(table, square, minfo);
+    printf("filled table: magic = 0x%" PRIx64 "\n", minfo.magic);
+    return 0;
+}
+

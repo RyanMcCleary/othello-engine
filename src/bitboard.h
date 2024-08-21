@@ -10,6 +10,17 @@ struct board {
 	bitboard white;
 };
 
+struct magic_info {
+    bitboard magic;
+    bitboard mask;
+    bitboard num_bits;
+};
+
+struct square_index {
+    uint8_t rank;
+    uint8_t file;
+};
+
 bitboard bb_ref(bitboard bb, uint8_t rank, uint8_t file);
 
 bitboard bb_set(bitboard bb, uint8_t rank, uint8_t file);
