@@ -136,29 +136,30 @@ void subset_fn(bitboard subset) {
 }
 
 bitboard *fill_table(bitboard *table, struct square_index square,
-            struct magic_info minfo) {
-    bitboard subset = minfo.mask;
+            struct magic_info *minfo) {
+    bitboard subset = minfo->mask;
     bitboard square_mask = UINT64_C(1) << (8 * square.rank + square.file);
     while (subset) {
-        size_t hash = (size_t)((subset * minfo.magic) >> (64 - minfo.num_bits));
-        bitboard flipped = flip_all(minfo.mask, ~minfo.mask, square_mask);
+        size_t hash = (size_t)((subset * minfo->magic) >> (64 - minfo->num_bits));
+        bitboard flipped = flip_all(minfo->mask, ~minfo->mask, square_mask);
         if (table[hash] != square_mask) {
             return NULL;
         }
         table[hash] = flipped;
-        subset = (subset - 1) & minfo.mask;
+        subset = (subset - 1) & minfo->mask;
     }
     return table;
 }
 
 struct magic_info find_magic(bitboard *table, struct square_index square,
-                    struct magic_info minfo) {
+                    bitboard mask, uint8_t num_bits) {
+    struct magic_info minfo = { .mask = mask, .num_bits = num_bits };
     while (1) {
-        for (size_t i = 0; i < (1 << minfo.num_bits); i++) {
+        for (size_t i = 0; i < (1 << num_bits); i++) {
             table[i] = UINT64_C(1) << (8 * square.rank + square.file);
         }
         minfo.magic = random_uint64() & random_uint64() & random_uint64();
-        if (fill_table(table, square, minfo)) {
+        if (fill_table(table, square, &minfo)) {
             return minfo;
         }
     }
@@ -166,9 +167,8 @@ struct magic_info find_magic(bitboard *table, struct square_index square,
 
 int main(int argc, char **argv) {
     struct square_index square = { .rank = 4, .file = 4 };
-    struct magic_info minfo = { .mask = orthogonal_mask(4, 4), .num_bits = 11 };
     bitboard table[2048];
-    fill_table(table, square, minfo);
+    struct magic_info minfo = find_magic(table, square, orthogonal_mask(4, 4), 11);
     printf("filled table: magic = 0x%" PRIx64 "\n", minfo.magic);
     return 0;
 }
