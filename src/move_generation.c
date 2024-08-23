@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "bitboard.h"
+#include "move_generation.h"
 #include <inttypes.h>
 #include <stdlib.h>
 #include <time.h>
@@ -7,16 +7,14 @@
 #define NOT_A_FILE UINT64_C(0xFEFEFEFEFEFEFEFE)
 #define NOT_H_FILE UINT64_C(0x7F7F7F7F7F7F7F7F)
 
-bitboard orthogonal_table[64][4096];
-
 struct magic_info orthogonal_magics[64];
 
 void print_board(bitboard black, bitboard white) {
 	for (uint8_t rank = 0; rank < 8; rank++) {
 		for (uint8_t file = 0; file < 8; file++) {
-			if (bb_ref(black, rank, file)) {
+			if (black & square_mask(rank, file)) {
 				putchar('B');
-			} else if (bb_ref(white, rank, file)) {
+			} else if (white & square_mask(rank, file)) {
 				putchar('W');
 			} else {
 				putchar('*');
@@ -117,13 +115,6 @@ bitboard flip_all(bitboard disks_to_flip, bitboard friendly_disks, bitboard move
 	return result | flip_southwest(disks_to_flip, friendly_disks, move);
 }
 
-uint64_t random_uint64(void) {
-	uint64_t result = (uint64_t)(rand() & 0xFFFF);
-	result |= ((uint64_t)(rand() & 0xFFFF) << 16);
-	result |= ((uint64_t)(rand() & 0xFFFF) << 32);
-	return result | ((uint64_t)(rand() & 0xFFFF) << 48);
-}
-
 size_t magic_hash(bitboard bb, struct magic_info *minfo) {
     return (size_t)((bb * minfo->magic) >> minfo->shift);
 }
@@ -131,59 +122,48 @@ size_t magic_hash(bitboard bb, struct magic_info *minfo) {
 bitboard *fill_table(bitboard *table, struct square_index square,
             struct magic_info *minfo) {
     bitboard subset = minfo->mask;
-    bitboard square_mask = UINT64_C(1) << (8 * square.rank + square.file);
+    bitboard empty = ~UINT64_C(0);
     while (subset) {
         size_t hash = magic_hash(subset, minfo);
-        bitboard flipped = flip_all(subset, ~subset, square_mask);
-        if (table[hash] != square_mask) {
+        bitboard flipped = flip_all(subset, ~subset,
+            square_mask(square.rank, square.file));
+        if (table[hash] == empty) {
+            table[hash] = flipped;
+        } else if (table[hash] != flipped) {
             return NULL;
         }
-        table[hash] = flipped;
         subset = (subset - 1) & minfo->mask;
-        // _i++;
     }
     return table;
 }
 
-void find_magic(bitboard *table, struct magic_info *minfo,
-                    struct square_index square, bitboard mask,
-                    uint8_t num_bits) {
-    minfo->mask = mask;
-    minfo->shift = 64 - num_bits;
-    while (1) {
-        for (size_t i = 0; i < (1 << num_bits); i++) {
-            table[i] = UINT64_C(1) << (8 * square.rank + square.file);
-        }
-        minfo->magic = random_uint64() & random_uint64() & random_uint64();
-        if (fill_table(table, square, minfo)) {
-            return;
-        }
-    }
+bitboard magic_lookup(bitboard *table, struct magic_info *minfo,
+            bitboard bb) {
+    return table[magic_hash(bb, minfo)];
 }
 
-void find_orthogonal_magics(bitboard (*table)[4096], struct magic_info *magics) {
-    for (uint8_t rank = 0; rank < 8; rank++) {
-        for (uint8_t file = 0; file < 8; file++) {
-            size_t idx = 8 * rank + file;
-            struct square_index square = { .rank = rank, .file = file };
-            find_magic(table[idx], &magics[idx], square,
-                orthogonal_mask(rank, file), 12);
-        }
-    }
+bitboard magic_flip_orthogonally(bitboard (*tables)[4096], struct magic_info magics,
+            bitboard disks_to_flip, bitboard friendly_disks,
+            uint8_t rank, uint8_t file) {
+    bitboard o_mask = orthogonal_mask(rank, file);
+    size_t square = 8 * rank + file;
+    return (magic_lookup(tables[square], &magics[square], disks_to_flip & o_mask) &
+        magic_lookup(tables[square], &magics[square], ~friendly_disks | o_mask));
 }
 
-int main(int argc, char **argv) {
-    srand(time(NULL));
-    find_orthogonal_magics(orthogonal_table, orthogonal_magics);
-    bitboard bb = 0;
-    bb = bb_set(bb, 4, 4);
-    print_board(flip_all(bb, ~bb, square_mask(3,4)), 0);
-    puts("\n------\n");
-    size_t square = 3*8+4;
-    printf("{ .mask = 0x%" PRIx64 ", .magic = 0x%" PRIx64 ", .shift = %d }\n",
-        orthogonal_magics[square].mask, orthogonal_magics[square].magic,
-        orthogonal_magics[square].shift);
-    printf("0x%" PRIx64 "\n", magic_hash(bb, &orthogonal_magics[square]));
-    return 0;
+bitboard magic_flip_diagonally(bitboard (*tables)[4096], struct magic_info magics,
+            bitboard disks_to_flip, bitboard friendly_disks,
+            uint8_t rank, uint8_t file) {
+    bitboard d_mask = diagonal_mask(rank, file);
+    size_t square = 8 * rank + file;
+    return (magic_lookup(tables[square], &magics[square], disks_to_flip & d_mask) &
+        magic_lookup(tables[square], &magics[square], ~friendly_disks | d_mask));
 }
 
+bitboard magic_flip(bitboard (*tables)[4096], struct magic_info magics,
+            bitboard disks_to_flip, bitboard friendly_disks,
+            uint8_t rank, uint8_t file) {
+    return (magic_flip_orthogonally(tables, magics, disks_to_flip, friendly_disks, rank, file) |
+        magic_flip_diagonally(tables, magics, disks_to_flip, friendly_disks, rank, file));
+}
+            
