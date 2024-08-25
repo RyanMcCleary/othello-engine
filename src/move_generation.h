@@ -12,7 +12,7 @@ struct board {
 };
 
 struct magic_info {
-    bitboard magic;
+    bitboard magic[2];
     bitboard mask;
     uint8_t shift;
 };
@@ -26,7 +26,8 @@ bitboard square_mask(uint8_t rank, uint8_t file);
 
 bitboard orthogonal_mask(uint8_t rank, uint8_t file);
 
-size_t magic_hash(bitboard bb, struct magic_info *minfo);
+size_t magic_hash(bitboard disks_to_flip, bitboard friendly_disks,
+        struct magic_info *minfo);
 
 bitboard *fill_table(bitboard *table, struct square_index square,
             struct magic_info *minfo);
