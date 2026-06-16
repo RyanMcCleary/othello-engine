@@ -1,12 +1,9 @@
 #include <stdio.h>
 #include "move_generation.h"
 #include <inttypes.h>
-#include <stdlib.h>
-#include <time.h>
 
 #define NOT_A_FILE UINT64_C(0xFEFEFEFEFEFEFEFE)
 #define NOT_H_FILE UINT64_C(0x7F7F7F7F7F7F7F7F)
-
 
 void print_board(bitboard black, bitboard white) {
 	for (uint8_t rank = 0; rank < 8; rank++) {
@@ -34,103 +31,90 @@ uint8_t count_ones(uint64_t bb) {
     return (uint8_t)((bb * 0x0101010101010101ULL) >> 56);
 }
 
-bitboard shift_north(bitboard bb) {
-    return bb >> 8;
+/* Single-step shifts. Each masks away the file that would wrap around the
+ * board edge, so they can be chained safely in the fills below. */
+static inline bitboard shift_north(bitboard bb) { return bb >> 8; }
+static inline bitboard shift_south(bitboard bb) { return bb << 8; }
+static inline bitboard shift_east(bitboard bb)  { return (bb << 1) & NOT_A_FILE; }
+static inline bitboard shift_west(bitboard bb)  { return (bb >> 1) & NOT_H_FILE; }
+static inline bitboard shift_northeast(bitboard bb) { return (bb >> 7) & NOT_A_FILE; }
+static inline bitboard shift_northwest(bitboard bb) { return (bb >> 9) & NOT_H_FILE; }
+static inline bitboard shift_southeast(bitboard bb) { return (bb << 9) & NOT_A_FILE; }
+static inline bitboard shift_southwest(bitboard bb) { return (bb << 7) & NOT_H_FILE; }
+
+/*
+ * Kogge-Stone occluded fill: flood `gen` along a direction through the cells
+ * set in `pro`, in three doubling steps (shift by 1, 2, 4 cells) instead of the
+ * six sequential steps of a Dumb7Fill. For diagonals/horizontals `pro` is
+ * pre-masked to one edge file; the iterative `pro &= ...` then prevents wraps.
+ */
+static inline bitboard occl_n(bitboard g, bitboard p) {
+    g |= p & (g >> 8);  p &= (p >> 8);
+    g |= p & (g >> 16); p &= (p >> 16);
+    return g | (p & (g >> 32));
+}
+static inline bitboard occl_s(bitboard g, bitboard p) {
+    g |= p & (g << 8);  p &= (p << 8);
+    g |= p & (g << 16); p &= (p << 16);
+    return g | (p & (g << 32));
+}
+static inline bitboard occl_e(bitboard g, bitboard p) {
+    p &= NOT_A_FILE;
+    g |= p & (g << 1); p &= (p << 1);
+    g |= p & (g << 2); p &= (p << 2);
+    return g | (p & (g << 4));
+}
+static inline bitboard occl_w(bitboard g, bitboard p) {
+    p &= NOT_H_FILE;
+    g |= p & (g >> 1); p &= (p >> 1);
+    g |= p & (g >> 2); p &= (p >> 2);
+    return g | (p & (g >> 4));
+}
+static inline bitboard occl_ne(bitboard g, bitboard p) {
+    p &= NOT_A_FILE;
+    g |= p & (g >> 7);  p &= (p >> 7);
+    g |= p & (g >> 14); p &= (p >> 14);
+    return g | (p & (g >> 28));
+}
+static inline bitboard occl_nw(bitboard g, bitboard p) {
+    p &= NOT_H_FILE;
+    g |= p & (g >> 9);  p &= (p >> 9);
+    g |= p & (g >> 18); p &= (p >> 18);
+    return g | (p & (g >> 36));
+}
+static inline bitboard occl_se(bitboard g, bitboard p) {
+    p &= NOT_A_FILE;
+    g |= p & (g << 9);  p &= (p << 9);
+    g |= p & (g << 18); p &= (p << 18);
+    return g | (p & (g << 36));
+}
+static inline bitboard occl_sw(bitboard g, bitboard p) {
+    p &= NOT_H_FILE;
+    g |= p & (g << 7);  p &= (p << 7);
+    g |= p & (g << 14); p &= (p << 14);
+    return g | (p & (g << 28));
 }
 
-bitboard shift_south(bitboard bb) {
-    return bb << 8;
+/*
+ * Branchless flip. Flood from the move square through opponent discs; the discs
+ * to flip are that run (gen minus the move square), kept only when the cell one
+ * step past the run holds a friendly disc (the run is closed).
+ */
+#define DEFINE_FLIP(name, occl, shift)                                         \
+bitboard name(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {\
+    bitboard gen = occl(move, disks_to_flip);                                  \
+    bitboard run = gen ^ move;                                                 \
+    return (shift(gen) & friendly_disks) ? run : 0;                            \
 }
 
-bitboard shift_east(bitboard bb) {
-    return (bb << 1) & NOT_A_FILE;
-}
-
-bitboard shift_west(bitboard bb) {
-    return (bb >> 1) & NOT_H_FILE;
-}
-
-bitboard shift_northeast(bitboard bb) {
-    return (bb >> 7) & NOT_A_FILE;
-}
-
-bitboard shift_northwest(bitboard bb) {
-    return (bb >> 9) & NOT_H_FILE;
-}
-
-bitboard shift_southeast(bitboard bb) {
-    return (bb << 9) & NOT_A_FILE;
-}
-
-bitboard shift_southwest(bitboard bb) {
-    return (bb << 7) & NOT_H_FILE;
-}
-
-bitboard signed_shift(bitboard bb, int shift) {
-	if (shift > 0) {
-		return bb << (unsigned) shift;
-	} else {
-		return bb >> (unsigned)(-shift);
-	}
-}
-
-bitboard generalized_ray_flip(bitboard disks_to_flip, bitboard friendly_disks,
-            bitboard move, bitboard no_wrap, int shift) {
-	bitboard result = 0;
-	bitboard gen = move;
-	bitboard next;
-	bitboard pro = disks_to_flip & no_wrap;
-	while ((next = signed_shift(gen, shift)) & pro) {
-		result |= next;
-		gen = next & pro;
-	}
-	if (next & no_wrap & friendly_disks) {
-		return result;
-	}
-	else {
-		return 0;
-	}
-}
-
-bitboard flip_north(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		~UINT64_C(0), -8);
-}
-
-bitboard flip_south(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		~UINT64_C(0), 8);
-}
-
-bitboard flip_east(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		NOT_A_FILE, 1);
-}
-
-bitboard flip_west(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		NOT_H_FILE, -1);
-}
-
-bitboard flip_northeast(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		NOT_A_FILE, -7);
-}
-
-bitboard flip_northwest(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		NOT_H_FILE, -9);
-}
-
-bitboard flip_southeast(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		NOT_A_FILE, 9);
-}
-
-bitboard flip_southwest(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
-	return generalized_ray_flip(disks_to_flip, friendly_disks, move,
-		NOT_H_FILE, 7);
-}
+DEFINE_FLIP(flip_north, occl_n, shift_north)
+DEFINE_FLIP(flip_south, occl_s, shift_south)
+DEFINE_FLIP(flip_east, occl_e, shift_east)
+DEFINE_FLIP(flip_west, occl_w, shift_west)
+DEFINE_FLIP(flip_northeast, occl_ne, shift_northeast)
+DEFINE_FLIP(flip_northwest, occl_nw, shift_northwest)
+DEFINE_FLIP(flip_southeast, occl_se, shift_southeast)
+DEFINE_FLIP(flip_southwest, occl_sw, shift_southwest)
 
 bitboard flip_all(bitboard disks_to_flip, bitboard friendly_disks, bitboard move) {
 	bitboard result = flip_north(disks_to_flip, friendly_disks, move);
@@ -143,24 +127,24 @@ bitboard flip_all(bitboard disks_to_flip, bitboard friendly_disks, bitboard move
 	return result | flip_southwest(disks_to_flip, friendly_disks, move);
 }
 
+/*
+ * Branchless move generation. For each direction, flood from the player's discs
+ * through contiguous opponent discs (Kogge-Stone); the run is `gen & opponent`,
+ * and the empty square one step past it is a legal move.
+ */
+#define MOVES_RAY(occl, shift) \
+    (moves |= shift(occl(player, opponent) & opponent) & empty)
+
 bitboard all_moves(bitboard opponent, bitboard player) {
-    bitboard moves = 0;
     bitboard empty = ~(opponent | player);
-    for (bitboard n = opponent & shift_north(player); n; n = opponent & shift_north(n))
-        moves |= empty & shift_north(n);
-    for (bitboard s = opponent & shift_south(player); s; s = opponent & shift_south(s))
-        moves |= empty & shift_south(s);
-    for (bitboard e = opponent & shift_east(player); e; e = opponent & shift_east(e))
-        moves |= empty & shift_east(e);
-    for (bitboard w = opponent & shift_west(player); w; w = opponent & shift_west(w))
-        moves |= empty & shift_west(w);
-    for (bitboard ne = opponent & shift_northeast(player); ne; ne = opponent & shift_northeast(ne))
-        moves |= empty & shift_northeast(ne);
-    for (bitboard nw = opponent & shift_northwest(player); nw; nw = opponent & shift_northwest(nw))
-        moves |= empty & shift_northwest(nw);
-    for (bitboard se = opponent & shift_southeast(player); se; se = opponent & shift_southeast(se))
-        moves |= empty & shift_southeast(se);
-    for (bitboard sw = opponent & shift_southwest(player); sw; sw = opponent & shift_southwest(sw))
-        moves |= empty & shift_southwest(sw);
+    bitboard moves = 0;
+    MOVES_RAY(occl_n, shift_north);
+    MOVES_RAY(occl_s, shift_south);
+    MOVES_RAY(occl_e, shift_east);
+    MOVES_RAY(occl_w, shift_west);
+    MOVES_RAY(occl_ne, shift_northeast);
+    MOVES_RAY(occl_nw, shift_northwest);
+    MOVES_RAY(occl_se, shift_southeast);
+    MOVES_RAY(occl_sw, shift_southwest);
     return moves;
 }

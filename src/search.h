@@ -1,24 +1,20 @@
 #ifndef SEARCH_H_INCLUDED
 #define SEARCH_H_INCLUDED
 
-#include <stddef.h>
-#include <stdbool.h>
-#include "move_generation.h"
+#include "board.h"
 
-enum game_result {
-    GAME_RESULT_WIN,
-    GAME_RESULT_LOSS,
-    GAME_RESULT_DRAW,
-    GAME_RESULT_IN_PROGRESS
-};
+/* Score bounds. Scores are integers, relative to the side to move
+ * (positive = good for the player about to play). */
+#define SCORE_INF      1000000
+#define SCORE_WIN_UNIT 10000   /* weight per disc of a decided endgame */
 
-float minmax(bitboard opponent, bitboard player, bool maximizing, size_t depth);
+/* Static evaluation of a leaf, side-to-move relative. */
+int evaluate(Board b);
 
-float alphabeta(bitboard opponent, bitboard player, bool maximizing, size_t depth,
-        float alpha, float beta);
+/* Negamax with alpha-beta. Returns the score of `b` for the side to move. */
+int negamax(Board b, int depth, int alpha, int beta);
 
-bitboard best_move(bitboard opponent, bitboard player, size_t depth);
-
-float hueristic_eval(bitboard opponent, bitboard player);
+/* Best legal move (single-bit bitboard) for the side to move, or 0 if none. */
+bitboard best_move(Board b, int depth);
 
 #endif
