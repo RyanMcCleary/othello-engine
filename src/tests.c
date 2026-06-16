@@ -3,6 +3,7 @@
 #include "board.h"
 #include "search.h"
 #include "perft.h"
+#include "tt.h"
 
 static int failures = 0;
 
@@ -78,12 +79,77 @@ static void test_search_runs(void) {
     CHECK((m & board_moves(b)) == m && m != 0, "best_move returned an illegal move");
 }
 
+/* Play the first legal move `n` times to reach a deterministic position. */
+static Board advance(Board b, int n) {
+    for (int i = 0; i < n; i++) {
+        bitboard m = board_moves(b);
+        if (m == 0) {
+            b = board_pass(b);
+            m = board_moves(b);
+            if (m == 0) break;
+        }
+        b = board_play(b, m & (~m + 1));
+    }
+    return b;
+}
+
+/* PVS + transposition table is an exact optimization: for any depth it must
+ * return the same value as plain negamax. */
+static void test_pvs_equals_negamax(void) {
+    int starts[] = {0, 6, 12, 18};
+    for (size_t s = 0; s < sizeof(starts) / sizeof(starts[0]); s++) {
+        Board b = advance(board_initial(), starts[s]);
+        if (board_moves(b) == 0) continue;
+        for (int d = 1; d <= 7; d++) {
+            tt_clear();
+            bitboard mv = 0;
+            int pvs_val = iterative_search(b, d, &mv);
+            int ref_val = negamax(b, d, -SCORE_INF, SCORE_INF);
+            CHECK(pvs_val == ref_val,
+                  "pvs != negamax at start=%d depth=%d: %d vs %d",
+                  starts[s], d, pvs_val, ref_val);
+            CHECK((mv & board_moves(b)) == mv && mv != 0,
+                  "pvs returned illegal move at start=%d depth=%d", starts[s], d);
+        }
+    }
+}
+
+/* Unpruned solve-to-terminal reference for the endgame solver. */
+static int solve_ref(Board b) {
+    bitboard m = board_moves(b);
+    if (m == 0) {
+        Board p = board_pass(b);
+        if (board_moves(p) == 0) return board_disc_diff(b);
+        return -solve_ref(p);
+    }
+    int best = -1000;
+    for (bitboard mv = m & (~m + 1); mv; m &= m - 1, mv = m & (~m + 1)) {
+        int s = -solve_ref(board_play(b, mv));
+        if (s > best) best = s;
+    }
+    return best;
+}
+
+static void test_endgame_solver(void) {
+    /* Drive toward a small-empties position, then check the alpha-beta solver
+     * against the unpruned reference. */
+    Board b = advance(board_initial(), 46); /* ~10 empty squares */
+    if (board_moves(b) == 0) {
+        b = board_pass(b);
+    }
+    int got = solve_endgame(b, -SCORE_INF, SCORE_INF);
+    int ref = solve_ref(b);
+    CHECK(got == ref, "endgame solver = %d, reference = %d", got, ref);
+}
+
 int main(void) {
     test_opening_moves();
     test_single_flip();
     test_all_directions();
     test_perft();
     test_search_runs();
+    test_pvs_equals_negamax();
+    test_endgame_solver();
 
     if (failures == 0) {
         printf("All tests passed.\n");

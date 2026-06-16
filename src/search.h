@@ -3,18 +3,36 @@
 
 #include "board.h"
 
-/* Score bounds. Scores are integers, relative to the side to move
- * (positive = good for the player about to play). */
+/* Scores are integers, side-to-move relative (positive = good for the player
+ * about to move). Terminal positions score the disc differential scaled by
+ * SCORE_WIN_UNIT, which stays well inside SCORE_INF (max 64 * unit). */
 #define SCORE_INF      1000000
-#define SCORE_WIN_UNIT 10000   /* weight per disc of a decided endgame */
+#define SCORE_WIN_UNIT 10000
 
-/* Static evaluation of a leaf, side-to-move relative. */
+/* Switch to the exact endgame solver at or below this many empty squares. */
+#ifndef ENDGAME_EMPTIES
+#define ENDGAME_EMPTIES 12
+#endif
+
+/* Count of nodes visited by the most recent search (for benchmarking / time
+ * control). Reset by the caller as needed. */
+extern uint64_t search_nodes;
+
 int evaluate(Board b);
 
-/* Negamax with alpha-beta. Returns the score of `b` for the side to move. */
+/* Plain negamax + alpha-beta. Reference implementation: the PVS+TT search must
+ * return the identical value for the same depth (it is an exact optimization). */
 int negamax(Board b, int depth, int alpha, int beta);
 
-/* Best legal move (single-bit bitboard) for the side to move, or 0 if none. */
+/* Iterative-deepening PVS with transposition table and move ordering. Returns
+ * the score and writes the chosen move (single-bit bitboard) to *best. */
+int iterative_search(Board b, int max_depth, bitboard *best);
+
+/* Exact endgame: best disc differential to the end of the game. */
+int solve_endgame(Board b, int alpha, int beta);
+
+/* Best move for the side to move: exact solver in the endgame, otherwise
+ * iterative-deepening PVS to `depth`. Returns 0 if there is no legal move. */
 bitboard best_move(Board b, int depth);
 
 #endif

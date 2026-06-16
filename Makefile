@@ -14,6 +14,7 @@ CORE := \
 	$(SRC_DIR)/board.c \
 	$(SRC_DIR)/move_generation.c \
 	$(SRC_DIR)/search.c \
+	$(SRC_DIR)/tt.c \
 	$(SRC_DIR)/perft.c
 
 .PHONY: all test bench wasm clean
