@@ -32,4 +32,7 @@ uint8_t count_ones(uint64_t bb);
 
 bitboard all_moves(bitboard opponent, bitboard player);
 
+/* The 8-neighbourhood of every set bit (the set itself excluded). */
+bitboard neighbors(bitboard bb);
+
 #endif

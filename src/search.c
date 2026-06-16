@@ -2,6 +2,7 @@
 #include "tt.h"
 
 uint64_t search_nodes = 0;
+int (*search_eval)(Board b) = evaluate;
 
 /* ---- helpers ---------------------------------------------------------- */
 
@@ -19,11 +20,100 @@ static int final_score(Board b) {
     return board_disc_diff(b) * SCORE_WIN_UNIT;
 }
 
-int evaluate(Board b) {
-    /* Phase 0 placeholder eval (replaced by positional eval in Phase 3). */
+/* Reference eval kept for comparison/regression: side-to-move mobility only. */
+int evaluate_mobility(Board b) {
     int player_moves   = (int)count_ones(all_moves(b.opponent, b.player));
     int opponent_moves = (int)count_ones(all_moves(b.player, b.opponent));
     return player_moves - opponent_moves;
+}
+
+#define CORNER_MASK UINT64_C(0x8100000000000081)
+
+/* The four squares of an edge, corner-to-corner, for the 4 edges. Shared
+ * corners are deduplicated because stability is accumulated into a bitboard. */
+static const int EDGES[4][8] = {
+    { 0,  1,  2,  3,  4,  5,  6,  7},
+    {56, 57, 58, 59, 60, 61, 62, 63},
+    { 0,  8, 16, 24, 32, 40, 48, 56},
+    { 7, 15, 23, 31, 39, 47, 55, 63},
+};
+
+/* X-squares (diagonally adjacent to a corner) and the corner each guards. */
+static const int XSQ[4]     = { 9, 14, 49, 54};
+static const int XCORNER[4] = { 0,  7, 56, 63};
+
+/* Edge-stable discs of `mine`: an outer-edge disc can only ever be flipped
+ * along its edge, so a run anchored to an owned corner -- or any disc on a
+ * fully occupied edge -- is permanently stable. A safe lower bound on full
+ * stability, computed into a bitboard so shared corners count once. */
+static bitboard edge_stable(bitboard mine, bitboard occ) {
+    bitboard stable = 0;
+    for (int e = 0; e < 4; e++) {
+        const int *idx = EDGES[e];
+        if ((mine >> idx[0]) & 1) {
+            for (int i = 0; i < 8 && ((mine >> idx[i]) & 1); i++)
+                stable |= UINT64_C(1) << idx[i];
+        }
+        if ((mine >> idx[7]) & 1) {
+            for (int i = 7; i >= 0 && ((mine >> idx[i]) & 1); i--)
+                stable |= UINT64_C(1) << idx[i];
+        }
+        int full = 1;
+        for (int i = 0; i < 8; i++)
+            if (!((occ >> idx[i]) & 1)) { full = 0; break; }
+        if (full) {
+            for (int i = 0; i < 8; i++)
+                if ((mine >> idx[i]) & 1) stable |= UINT64_C(1) << idx[i];
+        }
+    }
+    return stable;
+}
+
+/* X-squares owned by `mine` whose guarded corner is still empty (a liability). */
+static int x_square_risk(bitboard mine, bitboard occ) {
+    int risk = 0;
+    for (int i = 0; i < 4; i++) {
+        if (((mine >> XSQ[i]) & 1) && !((occ >> XCORNER[i]) & 1)) risk++;
+    }
+    return risk;
+}
+
+/*
+ * Hand-crafted, phase-blended evaluation (no ML). All terms are side-to-move
+ * relative: positive favours the player about to move. Weights interpolate from
+ * an opening profile (mobility/position) to an endgame profile (stability/disc
+ * count) as the board fills.
+ */
+int evaluate(Board b) {
+    bitboard P = b.player, O = b.opponent;
+    bitboard occ = P | O;
+    bitboard empty = ~occ;
+    int discs = (int)count_ones(occ);
+
+    int t = (discs - 4) * 256 / 60;     /* 0 = opening .. 256 = full board */
+    if (t < 0) t = 0;
+    if (t > 256) t = 256;
+#define BLEND(o, e) ((o) * (256 - t) / 256 + (e) * t / 256)
+
+    int mob = (int)count_ones(all_moves(O, P)) - (int)count_ones(all_moves(P, O));
+    int pot = (int)count_ones(empty & neighbors(O)) -
+              (int)count_ones(empty & neighbors(P));
+    int corner = (int)count_ones(P & CORNER_MASK) -
+                 (int)count_ones(O & CORNER_MASK);
+    int xrisk = x_square_risk(O, occ) - x_square_risk(P, occ);
+    int stab = (int)count_ones(edge_stable(P, occ)) -
+               (int)count_ones(edge_stable(O, occ));
+    int disc = (int)count_ones(P) - (int)count_ones(O);
+    int parity = ((64 - discs) & 1) ? 1 : -1;
+
+    return BLEND(80, 0)    * mob
+         + BLEND(40, 0)    * pot
+         + BLEND(300, 320) * corner
+         + BLEND(110, 20)  * xrisk
+         + BLEND(80, 320)  * stab
+         + BLEND(0, 120)   * disc
+         + BLEND(0, 40)    * parity;
+#undef BLEND
 }
 
 /* Static square weights used only for move ordering (corners best, X/C-squares
@@ -80,7 +170,7 @@ int negamax(Board b, int depth, int alpha, int beta) {
         return -negamax(passed, depth, -beta, -alpha);
     }
     if (depth <= 0) {
-        return evaluate(b);
+        return search_eval(b);
     }
     int best = -SCORE_INF;
     for (bitboard m = pop_ls1b(&moves); m; m = pop_ls1b(&moves)) {
@@ -112,7 +202,7 @@ static int pvs(Board b, int depth, int alpha, int beta) {
         return -pvs(passed, depth, -beta, -alpha);
     }
     if (depth <= 0) {
-        return evaluate(b);
+        return search_eval(b);
     }
 
     /* Shallow nodes: cheap path, no hashing, no sort. */
@@ -213,7 +303,7 @@ static int search_root(Board b, int depth, bitboard *best_out) {
 int iterative_search(Board b, int max_depth, bitboard *best) {
     *best = 0;
     if (board_moves(b) == 0) {
-        return evaluate(b);
+        return search_eval(b);
     }
     int score = 0;
     for (int d = 1; d <= max_depth; d++) {

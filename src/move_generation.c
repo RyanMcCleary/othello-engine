@@ -148,3 +148,9 @@ bitboard all_moves(bitboard opponent, bitboard player) {
     MOVES_RAY(occl_sw, shift_southwest);
     return moves;
 }
+
+bitboard neighbors(bitboard bb) {
+    bitboard ew = ((bb << 1) & NOT_A_FILE) | ((bb >> 1) & NOT_H_FILE);
+    bitboard row = bb | ew;
+    return ew | (row << 8) | (row >> 8);
+}

@@ -18,7 +18,12 @@
  * control). Reset by the caller as needed. */
 extern uint64_t search_nodes;
 
-int evaluate(Board b);
+int evaluate(Board b);            /* hand-crafted phase-blended eval */
+int evaluate_mobility(Board b);   /* mobility-only reference eval     */
+
+/* Leaf evaluator used by the search (defaults to `evaluate`). Swappable so two
+ * evals can be matched against each other in self-play. */
+extern int (*search_eval)(Board b);
 
 /* Plain negamax + alpha-beta. Reference implementation: the PVS+TT search must
  * return the identical value for the same depth (it is an exact optimization). */
