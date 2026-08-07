@@ -1,8 +1,26 @@
+#include <time.h>
 #include "search.h"
 #include "tt.h"
 
 uint64_t search_nodes = 0;
 int (*search_eval)(Board b) = evaluate;
+
+/* Time control. When `search_deadline_ms` is positive, searches abort once the
+ * clock passes it; `search_aborted` then propagates an immediate unwind. */
+static double search_deadline_ms = 0.0;
+static int search_aborted = 0;
+
+static double now_ms(void) {
+    return (double)clock() * 1000.0 / (double)CLOCKS_PER_SEC;
+}
+
+static inline int out_of_time(void) {
+    if (search_deadline_ms <= 0.0) return 0;
+    if ((search_nodes & 0x3FF) == 0 && now_ms() >= search_deadline_ms) {
+        search_aborted = 1;
+    }
+    return search_aborted;
+}
 
 /* ---- helpers ---------------------------------------------------------- */
 
@@ -193,13 +211,15 @@ int negamax(Board b, int depth, int alpha, int beta) {
 
 static int pvs(Board b, int depth, int alpha, int beta) {
     search_nodes++;
+    if (out_of_time()) return 0;
     bitboard moves = board_moves(b);
     if (moves == 0) {
         Board passed = board_pass(b);
         if (board_moves(passed) == 0) {
             return final_score(b);
         }
-        return -pvs(passed, depth, -beta, -alpha);
+        int score = -pvs(passed, depth, -beta, -alpha);
+        return search_aborted ? 0 : score;
     }
     if (depth <= 0) {
         return search_eval(b);
@@ -210,6 +230,7 @@ static int pvs(Board b, int depth, int alpha, int beta) {
         int best = -SCORE_INF;
         for (bitboard m = pop_ls1b(&moves); m; m = pop_ls1b(&moves)) {
             int score = -pvs(board_play(b, m), depth - 1, -beta, -alpha);
+            if (search_aborted) return 0;
             if (score > best) best = score;
             if (best > alpha) alpha = best;
             if (alpha >= beta) break;
@@ -244,10 +265,12 @@ static int pvs(Board b, int depth, int alpha, int beta) {
             score = -pvs(child, depth - 1, -beta, -alpha);
         } else {
             score = -pvs(child, depth - 1, -alpha - 1, -alpha);
+            if (search_aborted) return 0;
             if (score > alpha && score < beta) {
                 score = -pvs(child, depth - 1, -beta, -alpha);
             }
         }
+        if (search_aborted) return 0;
         if (score > best) {
             best = score;
             best_mv = list[i].move;
@@ -283,10 +306,12 @@ static int search_root(Board b, int depth, bitboard *best_out) {
             score = -pvs(child, depth - 1, -beta, -alpha);
         } else {
             score = -pvs(child, depth - 1, -alpha - 1, -alpha);
+            if (search_aborted) break;
             if (score > alpha) {
                 score = -pvs(child, depth - 1, -beta, -alpha);
             }
         }
+        if (search_aborted) break;
         if (score > best) {
             best = score;
             best_mv = list[i].move;
@@ -294,8 +319,10 @@ static int search_root(Board b, int depth, bitboard *best_out) {
         if (best > alpha) alpha = best;
     }
 
-    tt_store(key, depth, best, TT_EXACT, (uint8_t)square_index(best_mv),
-             TT_KIND_MID);
+    if (!search_aborted) {
+        tt_store(key, depth, best, TT_EXACT, (uint8_t)square_index(best_mv),
+                 TT_KIND_MID);
+    }
     *best_out = best_mv;
     return best;
 }
@@ -309,6 +336,36 @@ int iterative_search(Board b, int max_depth, bitboard *best) {
     for (int d = 1; d <= max_depth; d++) {
         score = search_root(b, d, best);
     }
+    return score;
+}
+
+int iterative_search_timed(Board b, int max_depth, double time_ms,
+                           bitboard *best) {
+    bitboard moves = board_moves(b);
+    if (moves == 0) {
+        *best = 0;
+        return search_eval(b);
+    }
+    *best = moves & (~moves + 1);    /* a legal fallback before depth 1 */
+
+    search_aborted = 0;
+    search_deadline_ms = time_ms > 0.0 ? now_ms() + time_ms : 0.0;
+
+    int score = 0;
+    for (int d = 1; d <= max_depth; d++) {
+        bitboard bm;
+        int s = search_root(b, d, &bm);
+        if (search_aborted) break;   /* discard the unfinished depth */
+        *best = bm;
+        score = s;
+        if (search_deadline_ms > 0.0 && now_ms() >= search_deadline_ms) break;
+    }
+
+    if (search_aborted) {
+        tt_clear();
+    }
+    search_deadline_ms = 0.0;
+    search_aborted = 0;
     return score;
 }
 

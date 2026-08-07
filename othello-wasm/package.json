@@ -1,0 +1,21 @@
+{
+  "name": "othello-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebAssembly build and JS API for the Othello engine.",
+  "scripts": {
+    "predev": "npm run wasm",
+    "dev": "vite",
+    "wasm": "make -C .. wasm",
+    "prebuild": "npm run wasm",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run wasm",
+    "test": "node node-test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0"
+  }
+}

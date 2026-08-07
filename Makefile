@@ -17,7 +17,7 @@ CORE := \
 	$(SRC_DIR)/tt.c \
 	$(SRC_DIR)/perft.c
 
-.PHONY: all test bench wasm clean
+.PHONY: all test bench wasm serve clean
 
 all: $(BUILD)/othello
 
@@ -36,11 +36,26 @@ bench: $(BUILD)/othello
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# Phase 4: a proper JS API (othello-wasm/) replaces this smoke build.
+# WebAssembly build: an ES module + .wasm in othello-wasm/, driven by the C ABI
+# in src/wasm_api.c. Boards cross the boundary as BigInt (-sWASM_BIGINT).
 EMCC    ?= emcc
-EMFLAGS ?= -O3
-wasm: | $(BUILD)
-	$(EMCC) $(EMFLAGS) $(CORE) $(SRC_DIR)/test.c -o $(BUILD)/othello.js
+WASM_DIR := othello-wasm
+WASM_EXPORTS := _othello_initial_black,_othello_initial_white,_othello_legal_moves,\
+_othello_evaluate,_othello_best_move,_othello_apply,_othello_result_black,\
+_othello_result_white,_othello_count
+EMFLAGS ?= -O3 -sWASM_BIGINT -sMODULARIZE -sEXPORT_ES6 \
+	-sEXPORT_NAME=createOthello -sENVIRONMENT=web,worker,node \
+	-sEXPORTED_RUNTIME_METHODS=ccall,cwrap \
+	-sEXPORTED_FUNCTIONS='$(WASM_EXPORTS)' \
+	-sALLOW_MEMORY_GROWTH
+
+wasm:
+	$(EMCC) $(EMFLAGS) $(CORE) $(SRC_DIR)/wasm_api.c -o $(WASM_DIR)/othello.js
+
+# Serve the web UI (module workers + wasm need HTTP, not file://).
+# Open http://localhost:8000/  after running.
+serve:
+	cd $(WASM_DIR) && python3 -m http.server 8000
 
 clean:
 	rm -rf $(BUILD)

@@ -3,3 +3,8 @@ build/
 *.out
 *.wasm
 *.js.mem
+
+# Generated Emscripten outputs (build with `make wasm`)
+othello-wasm/othello.js
+othello-wasm/node_modules/
+othello-wasm/dist/

@@ -33,6 +33,12 @@ int negamax(Board b, int depth, int alpha, int beta);
  * the score and writes the chosen move (single-bit bitboard) to *best. */
 int iterative_search(Board b, int max_depth, bitboard *best);
 
+/* As above, but stop once `time_ms` of search has elapsed (checked between and
+ * within iterations); the move from the last fully completed depth is kept.
+ * time_ms <= 0 means no time limit. */
+int iterative_search_timed(Board b, int max_depth, double time_ms,
+                           bitboard *best);
+
 /* Exact endgame: best disc differential to the end of the game. */
 int solve_endgame(Board b, int alpha, int beta);
 
